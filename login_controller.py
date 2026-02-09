@@ -1,0 +1,87 @@
+# login_controller.py
+from PyQt6.QtWidgets import QMessageBox
+
+
+class LoginController:
+    def __init__(self, view, model):
+        self.model = model
+        self.view = view
+        self.current_user = None
+        self.dashboard_controller = None
+        self.staff_dashboard_controller = None
+
+        self.view.login_attempted.connect(self.handle_login)
+
+    def handle_login(self, username, password):
+        print(f"Login attempt - Username: {username}")
+        is_valid, message, user_data = self.model.validate_credentials(username, password)
+
+        if is_valid:
+            self.show_message("Success", message, is_success=True)
+            self.current_user = user_data
+            self.model.user_data = user_data
+            self.view.clear_inputs()
+
+            # [CRITICAL FIX] Open Dashboard FIRST
+            self.open_dashboard()
+
+            # THEN Close Login Window
+            self.view.close()
+        else:
+            print(f"✗ Login failed: {message}")
+            self.show_message(
+                "Login Failed",
+                "Invalid username or password.\nPlease check your credentials and try again.",
+                is_success=False
+            )
+            self.view.password_input.clear()
+            self.view.password_input.setFocus()
+
+    def open_dashboard(self):
+        try:
+            user_role = self.current_user['role']
+            username = self.current_user['username']
+            print(f"Opening dashboard for: {username} (Role: {user_role})")
+
+            if user_role == "Admin":
+                from ADBoardController import DashboardController
+                self.dashboard_controller = DashboardController(self.current_user)
+                self.dashboard_controller.show()
+
+            elif user_role == "Staff":
+                from SDBoardController import StaffDashboardController
+                self.staff_dashboard_controller = StaffDashboardController(self.current_user)
+                self.staff_dashboard_controller.show()
+
+            else:
+                self.show_message("Access Denied", f"No dashboard available for role: {user_role}", is_success=False)
+                self.view.show()
+
+        except Exception as e:
+            print(f"\n✗ ERROR opening dashboard: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show_message("Error", f"Failed to open dashboard.\n\nError: {str(e)}", is_success=False)
+            self.view.show()
+
+    def show_message(self, title, message, is_success=False):
+        msg_box = QMessageBox(self.view)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setStyleSheet("""
+            QMessageBox { background-color: #E8E8E8; }
+            QMessageBox QLabel { color: #000000; font-size: 11px; font-family: Arial; padding: 5px 10px; }
+            QMessageBox QPushButton {
+                background-color: #0077B6; color: #FFFFFF; border: none; padding: 6px 16px;
+                font-weight: bold; font-family: Arial; font-size: 11px; min-width: 65px; margin-top: 5px;
+            }
+            QMessageBox QPushButton:hover { background-color: #005F8F; }
+        """)
+        if is_success:
+            msg_box.setIcon(QMessageBox.Icon.Information)
+        else:
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.exec()
+
+    def show(self):
+        self.view.show()
