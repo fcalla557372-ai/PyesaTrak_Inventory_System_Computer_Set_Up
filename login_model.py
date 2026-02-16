@@ -1,10 +1,10 @@
-# login_model.py - Updated WITHOUT bcrypt (plain text passwords)
+# login_model.py
 import mysql.connector
 from mysql.connector import Error
 
 
 class LoginModel:
-    """Model for handling login logic with plain text password verification"""
+    """Model for handling login logic"""
 
     def __init__(self):
         self.username = ""
@@ -43,7 +43,7 @@ class LoginModel:
         try:
             cursor = self.connection.cursor(dictionary=True)
 
-            # Query to get user by username and password
+            # Query to get user by username
             query = """
                 SELECT user_id, 
                        username, 
@@ -55,23 +55,41 @@ class LoginModel:
                        status
                 FROM users
                 WHERE username = %s 
-                  AND password = %s
                   AND status = 'Active'
             """
 
-            cursor.execute(query, (username, password))
+            cursor.execute(query, (username,))
             user = cursor.fetchone()
             cursor.close()
 
             if user:
-                self.username = username
-                self.password = password
-                self.user_data = user
+                stored_password = user['password']
 
-                # Build full name
-                full_name = f"{user['userFname']} {user['userMname']} {user['userLname']}".strip()
+                # Plain text password comparison
+                if stored_password == password:
+                    self.username = username
+                    self.password = password
+                    self.user_data = user
 
-                return True, f"Welcome, {full_name}!", user
+                    # Build full name
+                    full_name = f"{user['userFname']} {user['userMname']} {user['userLname']}".strip()
+
+                    # Log successful login to user_logins table
+                    try:
+                        cursor = self.connection.cursor()
+                        login_query = """
+                            INSERT INTO user_logins (user_id, login_time)
+                            VALUES (%s, NOW())
+                        """
+                        cursor.execute(login_query, (user['user_id'],))
+                        self.connection.commit()
+                    except Error as log_error:
+                        print(f"Warning: Failed to log login: {log_error}")
+                        # Don't fail login if logging fails
+
+                    return True, f"Welcome, {full_name}!", user
+                else:
+                    return False, "Invalid username or password", None
             else:
                 return False, "Invalid username or password", None
 

@@ -87,6 +87,7 @@ class ProductDetailsModel:
                 else:
                     status = 'Available'
 
+            # 1. Insert product into inventory
             query = """
                 INSERT INTO inventory (product_name, brand, model, description, stock_quantity, status, created_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
@@ -99,10 +100,42 @@ class ProductDetailsModel:
                 qty,
                 status
             ))
+
+            # Get the newly created product_id
+            product_id = cursor.lastrowid
+
+            # 2. Create initial stock transaction if quantity > 0
+            if qty > 0:
+                user_id = data.get('user_id', 1)  # Get user_id from data, default to 1 if not provided
+                transaction_query = """
+                    INSERT INTO stock_transactions 
+                    (product_id, transaction_type, quantity, remarks, performed_by, transaction_date)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """
+                cursor.execute(transaction_query, (
+                    product_id,
+                    'IN',
+                    qty,
+                    f'Initial stock - Product added',
+                    user_id
+                ))
+
+                # 3. Log activity
+                activity_query = """
+                    INSERT INTO activity_log (user_id, activity_description, activity_time)
+                    VALUES (%s, %s, NOW())
+                """
+                cursor.execute(activity_query, (
+                    user_id,
+                    f"Added product '{data['product_name']}' with initial stock: {qty}"
+                ))
+
             self.connection.commit()
             return True
         except Error as err:
             print(f"Error adding product: {err}")
+            if self.connection:
+                self.connection.rollback()
             return False
         finally:
             if self.connection and self.connection.is_connected():
@@ -113,6 +146,11 @@ class ProductDetailsModel:
         try:
             cursor = self.connection.cursor()
             self.connection.start_transaction()
+
+            # 0. Get product name for activity log
+            cursor.execute("SELECT product_name FROM inventory WHERE product_id = %s", (product_id,))
+            result = cursor.fetchone()
+            product_name = result[0] if result else f"Product #{product_id}"
 
             # 1. Update Inventory Table
             update_query = """
@@ -135,6 +173,22 @@ class ProductDetailsModel:
                 VALUES (%s, %s, %s, %s, %s, NOW())
             """
             cursor.execute(log_query, (product_id, transaction_type, abs(quantity_change), remarks, user_id))
+
+            # 3. Log Activity
+            activity_desc = ""
+            if transaction_type == 'IN':
+                activity_desc = f"Stock IN: {abs(quantity_change)} units of '{product_name}'"
+            elif transaction_type == 'OUT':
+                activity_desc = f"Stock OUT: {abs(quantity_change)} units of '{product_name}'"
+            elif transaction_type == 'DEFECT':
+                activity_desc = f"Reported DEFECT: {abs(quantity_change)} units of '{product_name}'"
+
+            if activity_desc:
+                activity_query = """
+                    INSERT INTO activity_log (user_id, activity_description, activity_time)
+                    VALUES (%s, %s, NOW())
+                """
+                cursor.execute(activity_query, (user_id, activity_desc))
 
             self.connection.commit()
             return True

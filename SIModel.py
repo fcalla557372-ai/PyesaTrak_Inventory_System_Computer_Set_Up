@@ -2,8 +2,10 @@
 import mysql.connector
 from mysql.connector import Error
 
+
 class InventoryModel:
     """Model specifically for Staff operations (No Add Product)"""
+
     def __init__(self):
         self.connection = None
         self.db_config = {
@@ -67,6 +69,11 @@ class InventoryModel:
             cursor = self.connection.cursor()
             self.connection.start_transaction()
 
+            # 0. Get product name for activity log
+            cursor.execute("SELECT product_name FROM inventory WHERE product_id = %s", (product_id,))
+            result = cursor.fetchone()
+            product_name = result[0] if result else f"Product #{product_id}"
+
             update_query = """
                 UPDATE inventory 
                 SET stock_quantity = stock_quantity + %s,
@@ -86,6 +93,22 @@ class InventoryModel:
                 VALUES (%s, %s, %s, %s, %s, NOW())
             """
             cursor.execute(log_query, (product_id, transaction_type, abs(quantity_change), remarks, user_id))
+
+            # Log Activity
+            activity_desc = ""
+            if transaction_type == 'IN':
+                activity_desc = f"Stock IN: {abs(quantity_change)} units of '{product_name}'"
+            elif transaction_type == 'OUT':
+                activity_desc = f"Stock OUT: {abs(quantity_change)} units of '{product_name}'"
+            elif transaction_type == 'DEFECT':
+                activity_desc = f"Reported DEFECT: {abs(quantity_change)} units of '{product_name}'"
+
+            if activity_desc:
+                activity_query = """
+                    INSERT INTO activity_log (user_id, activity_description, activity_time)
+                    VALUES (%s, %s, NOW())
+                """
+                cursor.execute(activity_query, (user_id, activity_desc))
 
             self.connection.commit()
             return True

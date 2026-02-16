@@ -142,7 +142,10 @@ class ReportsView(QWidget):
 
     def display_generated_data(self, data):
         if not data:
+            # Clear both rows AND headers when no data
             self.report_table.setRowCount(0)
+            self.report_table.setColumnCount(0)
+            self.report_table.clear()
             return
 
         self.export_btn.setEnabled(True)

@@ -59,6 +59,12 @@ class ProductDetailsController:
                 QMessageBox.warning(self.view, "Missing Information", "Product Name is required.")
                 return
 
+            # Add user_id to data for transaction logging
+            if self.user_data:
+                data['user_id'] = self.user_data.get('user_id', 1)
+            else:
+                data['user_id'] = 1  # Default to admin if no user data
+
             if self.model.add_new_product(data):
                 QMessageBox.information(self.view, "Success", "Product added successfully.")
                 self.load_all_products()

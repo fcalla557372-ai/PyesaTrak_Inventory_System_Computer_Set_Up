@@ -1,7 +1,6 @@
 # ManageUsersModel.py
 import mysql.connector
 from mysql.connector import Error
-import bcrypt
 
 
 class ManageUsersModel:
@@ -69,9 +68,6 @@ class ManageUsersModel:
         try:
             cursor = conn.cursor()
 
-            # Hash Password before saving
-            hashed_pw = self.hash_password(data['password'])
-
             # Insert using your schema
             query = """
                 INSERT INTO users (userFname, userLname, username, password, role, status)
@@ -81,7 +77,7 @@ class ManageUsersModel:
                 data['userFname'],
                 data['userLname'],
                 data['username'],
-                hashed_pw,
+                data['password'],  # Store password as plaintext
                 data['role'],
                 data['status']
             ))
@@ -107,11 +103,9 @@ class ManageUsersModel:
             fields = []
             values = []
 
-            # Handle Password Hashing if it's being updated
-            if 'password' in data and data['password']:
-                data['password'] = self.hash_password(data['password'])
-            elif 'password' in data:
-                del data['password']  # Remove empty password field to prevent overwriting
+            # Remove empty password field to prevent overwriting
+            if 'password' in data and not data['password']:
+                del data['password']
 
             for key, val in data.items():
                 fields.append(f"{key} = %s")
@@ -150,9 +144,3 @@ class ManageUsersModel:
             cursor.execute(query, (user_id, description))
         except Error:
             pass  # Fail silently for logs
-
-    @staticmethod
-    def hash_password(password):
-        password_bytes = password.encode('utf-8')
-        salt = bcrypt.gensalt(rounds=12)
-        return bcrypt.hashpw(password_bytes, salt)
